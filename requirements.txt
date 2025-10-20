@@ -3,8 +3,8 @@ fastapi==0.119.1
 uvicorn[standard]==0.38.0
 python-multipart==0.0.20
 
-# Redis
-redis==6.4.0
+# Vector Database
+chromadb==0.6.1
 
 # Gemini AI
 google-generativeai==0.8.5

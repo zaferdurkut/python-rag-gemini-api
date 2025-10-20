@@ -5,28 +5,29 @@ import os
 
 class Settings(BaseSettings):
     # Application
-    app_name: str = "FastAPI Hexagonal Architecture"
-    app_version: str = "1.0.0"
-    debug: bool = False
+    APP_NAME: str = "RAG System with ChromaDB"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = False
 
-    # Gemini API
-    gemini_api_key: str = "your-gemini-api-key-here"
-    gemini_model: str = "gemini-pro"
+    # Gemini AI
+    GEMINI_API_KEY: str = "your-gemini-api-key-here"
+    GEMINI_MODEL: str = "gemini-pro"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379"
-    redis_password: Optional[str] = None
+    # ChromaDB
+    CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
+    CHROMA_COLLECTION_NAME: str = "documents"
+    CHROMA_HOST: Optional[str] = None  # ChromaDB server host
+    CHROMA_SERVER_PORT: int = 8000  # ChromaDB server port
+    CHROMA_TELEMETRY_ANONYMIZED: bool = False  # Disable ChromaDB telemetry
+    CHROMA_TELEMETRY: bool = False  # Disable ChromaDB telemetry
 
     # Security
-    secret_key: str = "your-secret-key-here"
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-
-    # CORS
-    allowed_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    SECRET_KEY: str = "your-secret-key-here"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Logging
-    log_level: str = "INFO"
+    LOG_LEVEL: str = "INFO"
 
     class Config:
         env_file = ".env"

@@ -64,3 +64,6 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# ChromaDB
+chroma_data/

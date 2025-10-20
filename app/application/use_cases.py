@@ -1,74 +1,76 @@
 from typing import Optional
-from datetime import datetime
-import uuid
-from app.domain.entities import ChatRequest, ChatResponse, ConversationHistory
-from app.domain.repositories import ChatRepository
-from app.infrastructure.gemini_client import GeminiClient
+from app.infrastructure.chroma_repository import ChromaRepository
+from app.core.config import settings
 
 
-class ChatUseCase:
-    """Chat use case implementation."""
+class DocumentUseCase:
+    """Document management use case implementation."""
 
-    def __init__(self, chat_repository: ChatRepository, gemini_client: GeminiClient):
-        self.chat_repository = chat_repository
-        self.gemini_client = gemini_client
-
-    async def process_chat_request(self, request: ChatRequest) -> ChatResponse:
-        """Process chat request with Gemini AI."""
-        # Get or create conversation
-        conversation_id = request.conversation_id or str(uuid.uuid4())
-        conversation = await self.chat_repository.get_conversation(conversation_id)
-
-        if not conversation:
-            conversation = ConversationHistory(
-                conversation_id=conversation_id,
-                messages=[],
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-
-        # Add user message to conversation
-        conversation.messages.append(
-            {
-                "role": "user",
-                "content": request.message,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+    def __init__(self):
+        self.chroma_repository = ChromaRepository(
+            persist_directory=settings.CHROMA_PERSIST_DIRECTORY,
+            collection_name=settings.CHROMA_COLLECTION_NAME,
+            host=settings.CHROMA_HOST,
+            port=settings.CHROMA_SERVER_PORT,
         )
 
-        # Get response from Gemini
-        response_text = await self.gemini_client.generate_response(
-            request.message, request.context
+    async def add_documents(
+        self,
+        documents: list[str],
+        metadatas: Optional[list[dict]] = None,
+        ids: Optional[list[str]] = None,
+    ) -> list[str]:
+        """Add documents to the knowledge base."""
+        return await self.chroma_repository.add_documents(documents, metadatas, ids)
+
+    async def search_documents(
+        self, query: str, n_results: int = 5, where: Optional[dict] = None
+    ) -> list[dict]:
+        """Search for similar documents."""
+        return await self.chroma_repository.search_documents(query, n_results, where)
+
+    async def get_document(self, document_id: str) -> Optional[dict]:
+        """Get a specific document by ID."""
+        return await self.chroma_repository.get_document(document_id)
+
+    async def update_document(
+        self, document_id: str, document: str, metadata: Optional[dict] = None
+    ) -> bool:
+        """Update a document."""
+        return await self.chroma_repository.update_document(
+            document_id, document, metadata
         )
 
-        # Add assistant response to conversation
-        conversation.messages.append(
-            {
-                "role": "assistant",
-                "content": response_text,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+    async def delete_document(self, document_id: str) -> bool:
+        """Delete a document."""
+        return await self.chroma_repository.delete_document(document_id)
 
-        # Update conversation timestamp
-        conversation.updated_at = datetime.utcnow()
+    async def get_collection_stats(self) -> dict:
+        """Get collection statistics."""
+        return await self.chroma_repository.get_collection_stats()
 
-        # Save conversation
-        await self.chat_repository.save_conversation(conversation)
+    async def reset_collection(self) -> bool:
+        """Reset the collection."""
+        return await self.chroma_repository.reset_collection()
 
-        return ChatResponse(
-            response=response_text,
-            conversation_id=conversation_id,
-            timestamp=datetime.utcnow(),
-            metadata={"message_count": len(conversation.messages)},
-        )
+    async def search_for_rag_context(self, query: str, max_results: int = 3) -> str:
+        """Search for relevant documents to use as RAG context."""
+        try:
+            results = await self.search_documents(query, max_results)
 
-    async def get_conversation_history(
-        self, conversation_id: str
-    ) -> Optional[ConversationHistory]:
-        """Get conversation history."""
-        return await self.chat_repository.get_conversation(conversation_id)
+            if not results:
+                return ""
 
-    async def delete_conversation(self, conversation_id: str) -> bool:
-        """Delete conversation."""
-        return await self.chat_repository.delete_conversation(conversation_id)
+            # Combine the most relevant documents as context
+            context_parts = []
+            for result in results:
+                if (
+                    result.get("distance", 1.0) < 0.8
+                ):  # Only include highly relevant results
+                    context_parts.append(result["document"])
+
+            context = "\n\n".join(context_parts)
+            return context
+
+        except Exception as e:
+            return ""

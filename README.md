@@ -19,20 +19,22 @@ app/
 
 - **Hexagonal Architecture**: Clean architecture principles
 - **FastAPI**: Modern, fast web framework
-- **PostgreSQL**: Primary database
+- **ChromaDB**: Vector database for RAG (Retrieval-Augmented Generation)
 - **Redis**: Caching ve session management
+- **Gemini AI**: Google's generative AI integration
 - **Docker**: Containerization
 - **Authentication**: JWT-based authentication
 - **Middleware**: Logging, security, rate limiting
 - **Testing**: Pytest ile test coverage
+- **RAG System**: Intelligent document retrieval and AI-powered responses
 
 ## 🛠️ Teknolojiler
 
 - Python 3.11+
 - FastAPI
-- SQLAlchemy
-- PostgreSQL
+- ChromaDB (Vector Database)
 - Redis
+- Google Gemini AI
 - Docker & Docker Compose
 - Pytest
 
@@ -63,28 +65,51 @@ pip install -r requirements.txt
 ### 4. Environment variables'ları ayarlayın
 
 ```bash
-cp .env.example .env
-# .env dosyasını düzenleyin
+# .env dosyası otomatik oluşturulacak
+# GEMINI_API_KEY'inizi ayarlayın
 ```
 
 ### 5. Docker ile çalıştırın
 
 ```bash
+# Hızlı başlatma
+./start.sh
+
+# Veya manuel olarak
 docker-compose up -d
 ```
 
-## 🐳 Docker
+## 🐳 Docker Services
+
+Bu proje aşağıdaki servisleri içerir:
+
+- **FastAPI App** (Port 2000): Ana uygulama
+- **ChromaDB** (Port 8001): Vector database
+- **Redis** (Port 6379): Cache ve session storage
 
 ### Development
 
 ```bash
+# Tüm servisleri başlat
+./start.sh
+
+# Veya manuel olarak
 docker-compose up -d
 ```
 
-### Production
+### Servis Durumunu Kontrol Et
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+# Servis durumunu kontrol et
+docker-compose ps
+
+# Logları görüntüle
+docker-compose logs -f
+
+# Belirli servis logları
+docker-compose logs -f app
+docker-compose logs -f chroma
+docker-compose logs -f redis
 ```
 
 ## 🧪 Testing
@@ -104,8 +129,66 @@ pytest tests/test_main.py
 
 Uygulama çalıştıktan sonra:
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:2000/docs
+- **ReDoc**: http://localhost:2000/redoc
+- **Health Check**: http://localhost:2000/health
+- **ChromaDB UI**: http://localhost:8000
+
+## 🧠 ChromaDB & RAG System
+
+Bu proje ChromaDB kullanarak RAG (Retrieval-Augmented Generation) sistemi içerir:
+
+### ChromaDB Özellikleri
+- **Vector Storage**: Dokümanları vektör olarak saklar
+- **Similarity Search**: Benzer içerik arama
+- **Metadata Filtering**: Metadata ile filtreleme
+- **Persistent Storage**: Kalıcı veri saklama
+
+### RAG Sistemi Nasıl Çalışır
+1. **Document Ingestion**: Dokümanlar ChromaDB'ye eklenir
+2. **Vector Embedding**: Dokümanlar vektörlere dönüştürülür
+3. **Query Processing**: Kullanıcı sorusu vektöre dönüştürülür
+4. **Similarity Search**: Benzer dokümanlar bulunur
+5. **Context Retrieval**: İlgili içerik Gemini'ye gönderilir
+6. **AI Response**: Gemini, context ile birlikte cevap üretir
+
+### Örnek Kullanım
+
+```python
+# Doküman ekleme
+POST /documents/
+{
+    "documents": [
+        "Python is a programming language",
+        "FastAPI is a web framework"
+    ],
+    "metadatas": [
+        {"category": "programming"},
+        {"category": "web"}
+    ]
+}
+
+# Benzer doküman arama
+POST /documents/search
+{
+    "query": "What is Python?",
+    "n_results": 3
+}
+
+# RAG ile chat
+POST /chat/
+{
+    "message": "Tell me about Python programming",
+    "conversation_id": "optional"
+}
+```
+
+### Demo Script
+ChromaDB entegrasyonunu test etmek için:
+
+```bash
+python example_chroma_usage.py
+```
 
 ## 🔧 Development
 
@@ -125,16 +208,22 @@ mypy app/
 
 ## 🌐 Endpoints
 
-### Authentication
-- `POST /api/v1/token` - Login
-- `GET /api/v1/users/me` - Get current user
+### Chat & AI
+- `POST /chat/` - Chat with Gemini AI (with RAG)
+- `GET /chat/conversation/{id}` - Get conversation history
+- `DELETE /chat/conversation/{id}` - Delete conversation
+- `POST /chat/session/start` - Start chat session
+- `POST /chat/session/reset` - Reset chat session
+- `GET /chat/session/history` - Get chat history
 
-### Users
-- `POST /api/v1/users/` - Create user
-- `GET /api/v1/users/` - List users
-- `GET /api/v1/users/{id}` - Get user by ID
-- `PUT /api/v1/users/{id}` - Update user
-- `DELETE /api/v1/users/{id}` - Delete user
+### Document Management (RAG)
+- `POST /documents/` - Add documents to knowledge base
+- `POST /documents/search` - Search similar documents
+- `GET /documents/{id}` - Get specific document
+- `PUT /documents/{id}` - Update document
+- `DELETE /documents/{id}` - Delete document
+- `GET /documents/stats` - Get collection statistics
+- `POST /documents/reset` - Reset collection
 
 ## 🔒 Security Features
 
