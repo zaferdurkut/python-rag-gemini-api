@@ -26,10 +26,19 @@ app/
 ## 🚀 Features
 
 ### 📁 File Management
-- **Multi-format Support**: PDF, TXT, DOCX, MD files
-- **File Upload**: RESTful API for file upload
-- **Content Extraction**: Automatic text extraction
-- **Batch Processing**: Bulk file processing
+- **Multi-format Support**: PDF, TXT, DOCX, XLSX, PPTX, Images (PNG, JPG, etc.)
+- **File Upload**: RESTful API for single and multiple file uploads
+- **Content Extraction**: Automatic text extraction from various file types
+- **OCR Support**: Text extraction from images using Tesseract
+- **Batch Processing**: Bulk file processing with metadata support
+- **File Validation**: File type and size validation
+
+#### Supported File Types
+- **Documents**: PDF, TXT, DOCX, DOC
+- **Spreadsheets**: XLSX, XLS
+- **Presentations**: PPTX, PPT
+- **Images**: PNG, JPG, JPEG, GIF, BMP, TIFF (with OCR)
+- **File Size Limits**: 50MB for documents, 10MB for images
 
 ### 🧠 ChromaDB Vector Database
 - **Vector Storage**: Store documents as vectors
@@ -124,8 +133,34 @@ After starting the application:
 ## 🧠 RAG System Workflow
 
 ### 1. File Upload and Processing
+
+#### Upload Single File
 ```bash
-# Upload documents
+# Upload a single file (PDF, DOCX, TXT, etc.)
+curl -X POST "http://localhost:2000/api/v1/documents/upload" \
+  -F "file=@document.pdf" \
+  -F 'metadata={"source": "manual_upload", "category": "documentation"}'
+```
+
+#### Upload Multiple Files
+```bash
+# Upload multiple files at once
+curl -X POST "http://localhost:2000/api/v1/documents/upload-multiple" \
+  -F "files=@document1.pdf" \
+  -F "files=@document2.docx" \
+  -F "files=@image.png" \
+  -F 'metadatas=[{"source": "file1"}, {"source": "file2"}, {"source": "image"}]'
+```
+
+#### Get Supported File Types
+```bash
+# Check supported file types and limits
+curl -X GET "http://localhost:2000/api/v1/documents/supported-types"
+```
+
+#### Traditional Text Upload (Still Available)
+```bash
+# Upload documents as text
 curl -X POST "http://localhost:2000/api/v1/documents/" \
   -H "Content-Type: application/json" \
   -d '{

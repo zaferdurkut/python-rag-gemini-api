@@ -1,16 +1,22 @@
 from fastapi import FastAPI, Request
-
-# TrustedHostMiddleware import removed
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 import logging
 
 from app.core.config import settings
+from app.core.exceptions import RAGBaseException
 from app.presentation.api import router
 from app.presentation.middleware import (
     LoggingMiddleware,
     SecurityHeadersMiddleware,
     RateLimitMiddleware,
+)
+from app.presentation.error_handler import (
+    rag_exception_handler,
+    validation_exception_handler,
+    http_exception_handler,
+    general_exception_handler,
 )
 
 # Configure logging
@@ -45,22 +51,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, calls=100, period=60)
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler."""
-    logger.error(f"Global exception: {exc}")
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
-
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "message": "Welcome to RAG System with ChromaDB",
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
-        "features": ["Document Management", "Vector Search", "ChromaDB Integration"],
-    }
+# Add exception handlers
+app.add_exception_handler(RAGBaseException, rag_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 
 @app.get("/health")

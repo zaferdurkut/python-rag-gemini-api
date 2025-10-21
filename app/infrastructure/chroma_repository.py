@@ -236,6 +236,39 @@ class ChromaRepository:
             logger.error(f"Error getting collection stats: {e}")
             return {"total_documents": 0, "collection_name": self.collection_name}
 
+    async def list_documents(self) -> List[Dict[str, Any]]:
+        """List all documents with their IDs and metadata."""
+        try:
+            # Get all documents from the collection
+            results = self.collection.get()
+
+            documents = []
+            if results["ids"]:
+                for i, doc_id in enumerate(results["ids"]):
+                    document_info = {
+                        "id": doc_id,
+                        "metadata": (
+                            results["metadatas"][i]
+                            if results["metadatas"] and i < len(results["metadatas"])
+                            else {}
+                        ),
+                    }
+                    # Include a preview of the document content (first 100 characters)
+                    if results["documents"] and i < len(results["documents"]):
+                        content = results["documents"][i]
+                        document_info["content_preview"] = (
+                            content[:100] + "..." if len(content) > 100 else content
+                        )
+                        document_info["content_length"] = len(content)
+
+                    documents.append(document_info)
+
+            logger.info(f"Listed {len(documents)} documents")
+            return documents
+        except Exception as e:
+            logger.error(f"Error listing documents: {e}")
+            raise
+
     async def reset_collection(self) -> bool:
         """Reset the collection (delete all documents)."""
         try:
