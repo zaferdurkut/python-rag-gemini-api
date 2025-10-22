@@ -49,8 +49,8 @@ async def chat_with_ai(request: ChatRequest):
                     context_parts = []
                     for result in search_results:
                         distance = result.get("distance", 1.0)
-                        # More lenient threshold - include results with distance < 0.9
-                        if distance < 0.9:
+                        # Extremely lenient threshold - include results with distance < 2.0
+                        if distance < 2.0:
                             context_parts.append(result["document"])
                             sources.append(
                                 {
@@ -68,6 +68,12 @@ async def chat_with_ai(request: ChatRequest):
                     logger.info(
                         f"RAG context found: {len(context_parts)} documents, {len(rag_context)} characters"
                     )
+                    # Log distance values for debugging
+                    for i, result in enumerate(search_results):
+                        distance = result.get("distance", 1.0)
+                        logger.info(
+                            f"Result {i}: distance={distance:.4f}, included={distance < 2.0}"
+                        )
                 else:
                     logger.warning("No search results found for RAG context")
 
@@ -125,12 +131,35 @@ async def test_gemini(request: TestGeminiRequest):
 async def debug_rag(query: str, max_results: int = 5):
     """Debug RAG system - see what documents are found."""
     try:
+        # First check if we have any documents in the collection
+        collection_stats = await document_use_case.get_collection_stats()
+        logger.info(f"Collection stats: {collection_stats}")
+
+        # Test embedding service
+        try:
+            from app.infrastructure.embedding_service import embedding_service
+            import numpy as np
+
+            test_embedding = embedding_service.generate_single_embedding("test query")
+            logger.info(f"Embedding service working: {len(test_embedding)} dimensions")
+
+            # Test similarity between similar texts
+            embedding1 = embedding_service.generate_single_embedding("test query")
+            embedding2 = embedding_service.generate_single_embedding("test query")
+            similarity = np.dot(embedding1, embedding2) / (
+                np.linalg.norm(embedding1) * np.linalg.norm(embedding2)
+            )
+            logger.info(f"Self-similarity test: {similarity:.4f} (should be ~1.0)")
+        except Exception as e:
+            logger.error(f"Embedding service error: {e}")
+
         # Search for documents
         search_results = await document_use_case.search_documents(query, max_results)
 
         # Analyze results
         debug_info = {
             "query": query,
+            "collection_stats": collection_stats,
             "total_results": len(search_results),
             "results": [],
         }
@@ -147,7 +176,7 @@ async def debug_rag(query: str, max_results: int = 5):
                         else result["document"]
                     ),
                     "metadata": result.get("metadata", {}),
-                    "would_be_included": result.get("distance", 1.0) < 0.9,
+                    "would_be_included": result.get("distance", 1.0) < 2.0,
                 }
             )
 
@@ -156,6 +185,19 @@ async def debug_rag(query: str, max_results: int = 5):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error debugging RAG: {str(e)}",
+        )
+
+
+@router.get("/list-documents", response_model=Dict[str, Any])
+async def list_all_documents():
+    """List all documents in the collection."""
+    try:
+        documents = await document_use_case.list_documents()
+        return {"total_documents": len(documents), "documents": documents}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing documents: {str(e)}",
         )
 
 
