@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     EMBEDDING_DEVICE: str = "cpu"  # "cpu" or "cuda" for GPU
     EMBEDDING_BATCH_SIZE: int = 32  # Batch size for embedding generation
 
+    # RAG Configuration
+    RAG_DISTANCE_THRESHOLD: float = 2.0  # Maximum distance for including documents
+    RAG_MAX_CONTEXT_DOCS: int = 5  # Maximum number of context documents
+    RAG_DOCUMENT_PREVIEW_LENGTH: int = 200  # Length of document preview in sources
+
     # Security
     SECRET_KEY: str = "your-secret-key-here"
     ALGORITHM: str = "HS256"

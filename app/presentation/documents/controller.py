@@ -4,10 +4,10 @@ from typing import Optional, List, Dict, Any
 from app.application.use_cases import DocumentUseCase, FILE_PROCESSOR_AVAILABLE
 from app.infrastructure.file_processor import FileProcessor
 from app.infrastructure.embedding_service import embedding_service
+from app.core.logging import get_logger
 from app.presentation.documents.dto import (
     DocumentRequest,
     DocumentUpdateRequest,
-    TestGeminiRequest,
 )
 from app.core.exceptions import (
     DocumentNotFoundError,
@@ -24,6 +24,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # Initialize dependencies
 document_use_case = DocumentUseCase()
 file_processor = FileProcessor()
+logger = get_logger(__name__)
 
 
 # Document Management Endpoints
@@ -153,25 +154,6 @@ async def generate_embeddings(texts: List[str]):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating embeddings: {str(e)}",
-        )
-
-
-@router.post("/embeddings/single", response_model=Dict[str, Any])
-async def generate_single_embedding(text: str):
-    """Generate embedding for a single text."""
-    if not text.strip():
-        raise ValidationError("text", "Text cannot be empty")
-
-    try:
-        embedding = embedding_service.generate_single_embedding(text)
-        return {
-            "embedding": embedding.tolist(),
-            "dimension": len(embedding),
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating embedding: {str(e)}",
         )
 
 

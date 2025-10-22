@@ -1,11 +1,11 @@
-import logging
 from typing import List, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 from app.core.exceptions import EmbeddingError
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EmbeddingService:

@@ -27,9 +27,3 @@ class DocumentRequest(BaseModel):
 class DocumentUpdateRequest(BaseModel):
     document: str
     metadata: Optional[Dict[str, Any]] = None
-
-
-# Test DTOs
-class TestGeminiRequest(BaseModel):
-    prompt: str
-    context: Optional[str] = None

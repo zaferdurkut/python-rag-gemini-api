@@ -14,13 +14,13 @@ from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
 import json
-import logging
 import time
 import numpy as np
 from app.core.config import settings
 from app.infrastructure.embedding_service import embedding_service
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ChromaRepository:

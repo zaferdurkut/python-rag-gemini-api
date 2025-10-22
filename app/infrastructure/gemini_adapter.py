@@ -1,10 +1,10 @@
 import google.generativeai as genai
 from typing import Optional, List, Dict, Any
-import logging
 from app.core.config import settings
 from app.core.exceptions import GeminiAPIError
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GeminiAdapter:

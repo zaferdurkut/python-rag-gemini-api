@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
-import logging
 
 from app.core.config import settings
 from app.core.exceptions import RAGBaseException
+from app.core.logging import get_logger
 from app.presentation.documents.controller import router as documents_router
 from app.presentation.chat.controller import router as chat_router
 from app.presentation.middleware import (
@@ -20,9 +20,7 @@ from app.presentation.error_handler import (
     general_exception_handler,
 )
 
-# Configure logging
-logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
