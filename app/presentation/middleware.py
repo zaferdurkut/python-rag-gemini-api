@@ -1,8 +1,10 @@
 import time
 import logging
+import traceback
 from fastapi import Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 
@@ -112,3 +114,45 @@ def get_trusted_host_middleware():
     return TrustedHostMiddleware(
         allowed_hosts=["localhost", "127.0.0.1", "*.localhost"]
     )
+
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    """Middleware to catch any unhandled errors and ensure JSON responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            logger.debug(f"Processing request: {request.method} {request.url}")
+            response = await call_next(request)
+            logger.debug(f"Response status: {response.status_code}")
+            return response
+        except Exception as e:
+            logger.error(f"Unhandled error in middleware: {str(e)}", exc_info=True)
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Request path: {request.url.path}")
+
+            # Ensure we always return a JSON response
+            try:
+                error_response = JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": {
+                            "type": "MiddlewareError",
+                            "message": "An unexpected error occurred in middleware",
+                            "path": str(request.url.path),
+                            "exception_type": type(e).__name__,
+                            "exception_message": str(e),
+                        }
+                    },
+                )
+                logger.info("Created JSON error response successfully")
+                return error_response
+            except Exception as json_error:
+                logger.critical(
+                    f"Failed to create JSON error response in middleware: {json_error}"
+                )
+                # Return a basic text response as last resort
+                return Response(
+                    content="Internal Server Error",
+                    status_code=500,
+                    media_type="text/plain",
+                )

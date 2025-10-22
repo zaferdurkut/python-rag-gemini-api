@@ -1,5 +1,8 @@
 from typing import Optional, List, Dict, Any
-from app.infrastructure.chroma_repository import ChromaRepository
+from app.domain.document_repositories import DocumentRepository
+from app.domain.rag_repositories import RAGRepository
+from app.domain.document_entities import Document, SearchResult, CollectionStats
+from app.domain.rag_entities import RAGContext
 from app.core.config import settings
 from app.infrastructure.file_processor import FileProcessor
 from app.core.logging import get_logger
@@ -13,14 +16,15 @@ logger = get_logger(__name__)
 class DocumentUseCase:
     """Document management use case implementation."""
 
-    def __init__(self):
-        self.chroma_repository = ChromaRepository(
-            persist_directory=settings.CHROMA_PERSIST_DIRECTORY,
-            collection_name=settings.CHROMA_COLLECTION_NAME,
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_SERVER_PORT,
-        )
-        self.file_processor = FileProcessor()
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        rag_repository: RAGRepository,
+        file_processor: FileProcessor,
+    ):
+        self.document_repository = document_repository
+        self.rag_repository = rag_repository
+        self.file_processor = file_processor
 
     async def add_documents(
         self,
@@ -29,131 +33,51 @@ class DocumentUseCase:
         ids: Optional[list[str]] = None,
     ) -> list[str]:
         """Add documents to the knowledge base."""
-        return await self.chroma_repository.add_documents(documents, metadatas, ids)
+        return await self.document_repository.add_documents(documents, metadatas, ids)
 
     async def search_documents(
         self, query: str, n_results: int = 5, where: Optional[dict] = None
-    ) -> list[dict]:
+    ) -> List[SearchResult]:
         """Search for similar documents."""
-        return await self.chroma_repository.search_documents(query, n_results, where)
+        return await self.document_repository.search_documents(query, n_results, where)
 
-    async def get_document(self, document_id: str) -> Optional[dict]:
+    async def get_document(self, document_id: str) -> Optional[Document]:
         """Get a specific document by ID."""
-        return await self.chroma_repository.get_document(document_id)
+        return await self.document_repository.get_document(document_id)
 
     async def update_document(
         self, document_id: str, document: str, metadata: Optional[dict] = None
     ) -> bool:
         """Update a document."""
-        return await self.chroma_repository.update_document(
+        return await self.document_repository.update_document(
             document_id, document, metadata
         )
 
     async def delete_document(self, document_id: str) -> bool:
         """Delete a document."""
-        return await self.chroma_repository.delete_document(document_id)
+        return await self.document_repository.delete_document(document_id)
 
-    async def get_collection_stats(self) -> dict:
+    async def get_collection_stats(self) -> CollectionStats:
         """Get collection statistics."""
-        return await self.chroma_repository.get_collection_stats()
+        return await self.document_repository.get_collection_stats()
 
-    async def list_documents(self) -> list[dict]:
+    async def list_documents(self) -> List[Document]:
         """List all documents with their IDs and metadata."""
-        return await self.chroma_repository.list_documents()
-
-    async def reset_collection(self) -> bool:
-        """Reset the collection."""
-        return await self.chroma_repository.reset_collection()
-
-    async def search_for_rag_context(self, query: str, max_results: int = 3) -> str:
-        """Search for relevant documents to use as RAG context."""
-        results = await self.search_documents(query, max_results)
-
-        if not results:
-            return ""
-
-        # Combine the most relevant documents as context
-        context_parts = []
-        for result in results:
-            if (
-                result.get("distance", 1.0) < 0.8
-            ):  # Only include highly relevant results
-                context_parts.append(result["document"])
-
-        context = "\n\n".join(context_parts)
-        return context
+        return await self.document_repository.list_documents()
 
     async def get_rag_context(
         self, query: str, max_docs: Optional[int] = None
-    ) -> Dict[str, Any]:
+    ) -> RAGContext:
         """Get RAG context for a query with configurable parameters."""
         # Use config values or provided max_docs
         max_docs = max_docs or settings.RAG_MAX_CONTEXT_DOCS
 
-        # Search for relevant documents
-        search_results = await self.chroma_repository.search_documents(
-            query, n_results=max_docs
+        # Get RAG context using the repository
+        return await self.rag_repository.get_rag_context(
+            query=query,
+            max_docs=max_docs,
+            similarity_threshold=settings.RAG_DISTANCE_THRESHOLD,
         )
-
-        if not search_results:
-            logger.warning("No search results found for RAG context")
-            return {
-                "context": "",
-                "sources": [],
-                "total_found": 0,
-                "included_docs": 0,
-            }
-
-        # Extract context from search results using config threshold
-        context_parts = []
-        sources = []
-        included_docs = 0
-
-        for result in search_results:
-            distance = result.get("distance", 1.0)
-
-            # Use config threshold
-            if distance < settings.RAG_DISTANCE_THRESHOLD:
-                context_parts.append(result["document"])
-                included_docs += 1
-
-                # Create source with config preview length
-                preview_length = settings.RAG_DOCUMENT_PREVIEW_LENGTH
-                document_preview = (
-                    result["document"][:preview_length] + "..."
-                    if len(result["document"]) > preview_length
-                    else result["document"]
-                )
-
-                sources.append(
-                    {
-                        "document": document_preview,
-                        "score": 1 - distance,
-                        "metadata": result.get("metadata", {}),
-                        "distance": distance,
-                    }
-                )
-
-                logger.info(f"Result included: distance={distance:.4f}")
-            else:
-                logger.info(
-                    f"Result excluded: distance={distance:.4f} (threshold: {settings.RAG_DISTANCE_THRESHOLD})"
-                )
-
-        # Combine context
-        rag_context = "\n\n".join(context_parts)
-
-        logger.info(
-            f"RAG context: {included_docs}/{len(search_results)} docs, "
-            f"{len(rag_context)} characters"
-        )
-
-        return {
-            "context": rag_context,
-            "sources": sources,
-            "total_found": len(search_results),
-            "included_docs": included_docs,
-        }
 
     async def process_and_add_files(
         self,
@@ -193,7 +117,7 @@ class DocumentUseCase:
                 for i, metadata in enumerate(metadatas):
                     file_metadatas[i].update(metadata)
 
-            document_ids = await self.chroma_repository.add_documents(
+            document_ids = await self.document_repository.add_documents(
                 documents, file_metadatas, ids
             )
 
@@ -235,8 +159,8 @@ class DocumentUseCase:
         if metadata:
             file_metadata.update(metadata)
 
-        # Add to ChromaDB
-        document_ids = await self.chroma_repository.add_documents(
+        # Add to repository
+        document_ids = await self.document_repository.add_documents(
             [result["content"]],
             [file_metadata],
             [document_id] if document_id else None,

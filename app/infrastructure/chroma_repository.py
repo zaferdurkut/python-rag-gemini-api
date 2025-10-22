@@ -19,11 +19,15 @@ import numpy as np
 from app.core.config import settings
 from app.infrastructure.embedding_service import embedding_service
 from app.core.logging import get_logger
+from app.domain.document_repositories import DocumentRepository
+from app.domain.rag_repositories import RAGRepository
+from app.domain.document_entities import Document, SearchResult, CollectionStats
+from app.domain.rag_entities import RAGContext
 
 logger = get_logger(__name__)
 
 
-class ChromaRepository:
+class ChromaRepository(DocumentRepository, RAGRepository):
     """ChromaDB repository for vector storage and retrieval."""
 
     def __init__(
@@ -174,7 +178,7 @@ class ChromaRepository:
 
     async def search_documents(
         self, query: str, n_results: int = 5, where: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[SearchResult]:
         """Search for similar documents using embeddings."""
         try:
             # Generate embedding for the query
@@ -187,43 +191,65 @@ class ChromaRepository:
                 where=where,
             )
 
-            documents = []
+            search_results = []
             if results["documents"] and results["documents"][0]:
                 for i, doc in enumerate(results["documents"][0]):
-                    documents.append(
-                        {
-                            "id": results["ids"][0][i],
-                            "document": doc,
-                            "metadata": (
-                                results["metadatas"][0][i]
-                                if results["metadatas"]
-                                else {}
-                            ),
-                            "distance": (
-                                results["distances"][0][i]
-                                if results["distances"]
-                                else 0.0
-                            ),
-                        }
+                    # Create Document entity
+                    document = Document(
+                        id=results["ids"][0][i],
+                        content=doc,
+                        metadata=(
+                            results["metadatas"][0][i] if results["metadatas"] else {}
+                        ),
                     )
 
-            logger.info(f"Found {len(documents)} similar documents using embeddings")
-            return documents
+                    # Create SearchResult with similarity score
+                    distance = (
+                        results["distances"][0][i] if results["distances"] else 0.0
+                    )
+                    # Convert cosine distance to cosine similarity
+                    # Distance: 0 (identical) → 2 (opposite)
+                    # Similarity: 1 (identical) → -1 (opposite)
+                    # Normalize distance to 0-1 range, then convert to similarity
+                    normalized_distance = min(
+                        distance / 2.0, 1.0
+                    )  # Distance'ı 0-1 aralığına normalize et
+                    similarity_score = (
+                        1.0 - normalized_distance
+                    )  # Similarity = 1 - normalized_distance
+                    similarity_score = max(
+                        0.0, min(1.0, similarity_score)
+                    )  # 0-1 aralığında sınırla
+
+                    # Debug logging
+                    logger.info(
+                        f"Distance: {distance:.4f}, Normalized: {normalized_distance:.4f}, Similarity: {similarity_score:.4f}"
+                    )
+
+                    search_result = SearchResult(
+                        document=document, similarity_score=similarity_score, rank=i + 1
+                    )
+                    search_results.append(search_result)
+
+            logger.info(
+                f"Found {len(search_results)} similar documents using embeddings"
+            )
+            return search_results
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
             raise
 
-    async def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+    async def get_document(self, document_id: str) -> Optional[Document]:
         """Get a specific document by ID."""
         try:
             results = self.collection.get(ids=[document_id])
 
             if results["documents"] and results["documents"][0]:
-                return {
-                    "id": results["ids"][0],
-                    "document": results["documents"][0],
-                    "metadata": results["metadatas"][0] if results["metadatas"] else {},
-                }
+                return Document(
+                    id=results["ids"][0],
+                    content=results["documents"][0],
+                    metadata=results["metadatas"][0] if results["metadatas"] else {},
+                )
             return None
         except Exception as e:
             logger.error(f"Error getting document {document_id}: {e}")
@@ -256,14 +282,22 @@ class ChromaRepository:
             logger.error(f"Error deleting document {document_id}: {e}")
             return False
 
-    async def get_collection_stats(self) -> Dict[str, Any]:
+    async def get_collection_stats(self) -> CollectionStats:
         """Get collection statistics."""
         try:
             count = self.collection.count()
-            return {"total_documents": count, "collection_name": self.collection_name}
+            return CollectionStats(
+                total_documents=count,
+                collection_name=self.collection_name,
+                last_updated=datetime.utcnow(),
+            )
         except Exception as e:
             logger.error(f"Error getting collection stats: {e}")
-            return {"total_documents": 0, "collection_name": self.collection_name}
+            return CollectionStats(
+                total_documents=0,
+                collection_name=self.collection_name,
+                last_updated=datetime.utcnow(),
+            )
 
     async def list_documents(self) -> List[Dict[str, Any]]:
         """List all documents with their IDs and metadata."""
@@ -308,3 +342,84 @@ class ChromaRepository:
         except Exception as e:
             logger.error(f"Error resetting collection: {e}")
             return False
+
+    async def list_documents(self) -> List[Document]:
+        """List all documents with their IDs and metadata."""
+        try:
+            # Get all documents from the collection
+            results = self.collection.get()
+
+            documents = []
+            if results["ids"]:
+                for i, doc_id in enumerate(results["ids"]):
+                    document = Document(
+                        id=doc_id,
+                        content=(
+                            results["documents"][i]
+                            if results["documents"] and i < len(results["documents"])
+                            else ""
+                        ),
+                        metadata=(
+                            results["metadatas"][i]
+                            if results["metadatas"] and i < len(results["metadatas"])
+                            else {}
+                        ),
+                    )
+                    documents.append(document)
+
+            logger.info(f"Listed {len(documents)} documents")
+            return documents
+        except Exception as e:
+            logger.error(f"Error listing documents: {e}")
+            raise
+
+    async def get_rag_context(
+        self, query: str, max_docs: int = 5, similarity_threshold: float = 0.7
+    ) -> RAGContext:
+        """Get RAG context for a query."""
+        try:
+            # Search for relevant documents
+            search_results = await self.search_documents(query, n_results=max_docs)
+
+            if not search_results:
+                logger.warning("No search results found for RAG context")
+                return RAGContext(
+                    context="", sources=[], included_docs=0, total_found=0
+                )
+
+            # Filter results by similarity threshold
+            relevant_docs = []
+            context_parts = []
+
+            for result in search_results:
+                logger.info(
+                    f"Evaluating result: similarity={result.similarity_score:.4f}, threshold={similarity_threshold:.4f}"
+                )
+                if result.similarity_score >= similarity_threshold:
+                    relevant_docs.append(result.document)
+                    context_parts.append(result.document.content)
+                    logger.info(
+                        f"Result included: similarity={result.similarity_score:.4f} >= threshold={similarity_threshold:.4f}"
+                    )
+                else:
+                    logger.info(
+                        f"Result excluded: similarity={result.similarity_score:.4f} < threshold={similarity_threshold:.4f}"
+                    )
+
+            # Combine context
+            rag_context = "\n\n".join(context_parts)
+
+            logger.info(
+                f"RAG context: {len(relevant_docs)}/{len(search_results)} docs, "
+                f"{len(rag_context)} characters"
+            )
+
+            return RAGContext(
+                context=rag_context,
+                sources=relevant_docs,
+                included_docs=len(relevant_docs),
+                total_found=len(search_results),
+            )
+        except Exception as e:
+            logger.error(f"Error getting RAG context: {e}")
+            raise
