@@ -2,6 +2,7 @@ import google.generativeai as genai
 from typing import Optional, List, Dict, Any
 import logging
 from app.core.config import settings
+from app.core.exceptions import GeminiAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,25 @@ class GeminiAdapter:
         self.api_key = settings.GEMINI_API_KEY
         self.model_name = settings.GEMINI_MODEL
 
-        # Configure Gemini
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(self.model_name)
+        # Validate API key
+        if not self.api_key or self.api_key == "your-gemini-api-key-here":
+            logger.warning(
+                "Gemini API key not configured. Chat functionality will be limited."
+            )
+            self.model = None
+            return
 
-        logger.info(f"Gemini adapter initialized with model: {self.model_name}")
+        try:
+            # Configure Gemini
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel(self.model_name)
+            logger.info(f"Gemini adapter initialized with model: {self.model_name}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini adapter: {e}")
+            raise GeminiAPIError(
+                operation="initialization",
+                reason=f"Failed to initialize model '{self.model_name}': {str(e)}",
+            )
 
     async def generate_response(
         self,
@@ -27,6 +42,12 @@ class GeminiAdapter:
         system_instruction: Optional[str] = None,
     ) -> str:
         """Generate response using Gemini AI with optional context."""
+        if self.model is None:
+            raise GeminiAPIError(
+                operation="generate_response",
+                reason="Model not initialized. Please configure a valid API key.",
+            )
+
         try:
             # Prepare the full prompt
             full_prompt = self._prepare_prompt(prompt, context, system_instruction)
@@ -39,11 +60,17 @@ class GeminiAdapter:
                 return response.text
             else:
                 logger.warning("Empty response from Gemini")
-                return "I couldn't generate a response. Please try again."
+                raise GeminiAPIError(
+                    operation="generate_response",
+                    reason="Empty response from Gemini model",
+                )
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
-            raise Exception(f"Failed to generate response: {str(e)}")
+            raise GeminiAPIError(
+                operation="generate_response",
+                reason=f"Failed to generate response: {str(e)}",
+            )
 
     def _prepare_prompt(
         self,
@@ -60,17 +87,28 @@ class GeminiAdapter:
 
         # Add context if provided
         if context:
+            logger.info(f"Using RAG context: {len(context)} characters")
             parts.append(f"Context: {context}")
+        else:
+            logger.warning("No RAG context provided")
 
         # Add the main prompt
         parts.append(f"Question: {prompt}")
 
-        return "\n\n".join(parts)
+        full_prompt = "\n\n".join(parts)
+        logger.info(f"Full prompt length: {len(full_prompt)} characters")
+        return full_prompt
 
     async def generate_with_rag_context(
         self, query: str, rag_context: str, system_instruction: Optional[str] = None
     ) -> str:
         """Generate response with RAG context."""
+        if self.model is None:
+            raise GeminiAPIError(
+                operation="generate_with_rag_context",
+                reason="Model not initialized. Please configure a valid API key.",
+            )
+
         system_instruction = system_instruction or (
             "You are a helpful AI assistant. Use the provided context to answer questions accurately. "
             "If the context doesn't contain relevant information, say so and provide a general answer."
@@ -87,6 +125,12 @@ class GeminiAdapter:
         context: Optional[str] = None,
     ) -> str:
         """Generate response with chat history."""
+        if self.model is None:
+            raise GeminiAPIError(
+                operation="chat_with_history",
+                reason="Model not initialized. Please configure a valid API key.",
+            )
+
         try:
             # Start a chat session
             chat = self.model.start_chat(history=[])
@@ -103,11 +147,17 @@ class GeminiAdapter:
                 return response.text
             else:
                 logger.warning("Empty chat response from Gemini")
-                return "I couldn't generate a response. Please try again."
+                raise GeminiAPIError(
+                    operation="chat_with_history",
+                    reason="Empty response from Gemini model",
+                )
 
         except Exception as e:
             logger.error(f"Error in chat with history: {e}")
-            raise Exception(f"Failed to generate chat response: {str(e)}")
+            raise GeminiAPIError(
+                operation="chat_with_history",
+                reason=f"Failed to generate chat response: {str(e)}",
+            )
 
     async def get_model_info(self) -> Dict[str, Any]:
         """Get information about the current model."""

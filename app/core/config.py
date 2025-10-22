@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # Gemini AI
     GEMINI_API_KEY: str = "your-gemini-api-key-here"
-    GEMINI_MODEL: str = "gemini-pro"
+    GEMINI_MODEL: str = "gemini-2.5-flash"  # Updated to current model name
 
     # ChromaDB
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     CHROMA_SERVER_PORT: int = 8000  # ChromaDB server port
     CHROMA_TELEMETRY_ANONYMIZED: bool = False  # Disable ChromaDB telemetry
     CHROMA_TELEMETRY: bool = False  # Disable ChromaDB telemetry
+
+    # Embeddings
+    EMBEDDING_MODEL: str = (
+        "sentence-transformers/all-MiniLM-L6-v2"  # Default embedding model
+    )
+    EMBEDDING_DEVICE: str = "cpu"  # "cpu" or "cuda" for GPU
+    EMBEDDING_BATCH_SIZE: int = 32  # Batch size for embedding generation
 
     # Security
     SECRET_KEY: str = "your-secret-key-here"

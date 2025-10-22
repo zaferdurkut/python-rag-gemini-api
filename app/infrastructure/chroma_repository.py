@@ -16,7 +16,9 @@ from datetime import datetime
 import json
 import logging
 import time
+import numpy as np
 from app.core.config import settings
+from app.infrastructure.embedding_service import embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -101,11 +103,20 @@ class ChromaRepository:
             logger.info(f"Using existing collection: {self.collection_name}")
             return collection
         except Exception:
+            # Get embedding dimension from the embedding service
+            embedding_dimension = embedding_service.get_embedding_dimension()
+
             collection = self.client.create_collection(
                 name=self.collection_name,
-                metadata={"description": "Document embeddings for RAG system"},
+                metadata={
+                    "description": "Document embeddings for RAG system",
+                    "embedding_model": settings.EMBEDDING_MODEL,
+                    "embedding_dimension": embedding_dimension,
+                },
             )
-            logger.info(f"Created new collection: {self.collection_name}")
+            logger.info(
+                f"Created new collection: {self.collection_name} with embedding dimension: {embedding_dimension}"
+            )
             return collection
 
     async def add_documents(
@@ -114,7 +125,7 @@ class ChromaRepository:
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
     ) -> List[str]:
-        """Add documents to the collection."""
+        """Add documents to the collection with embeddings."""
         try:
             if ids is None:
                 ids = [str(uuid.uuid4()) for _ in documents]
@@ -139,11 +150,23 @@ class ChromaRepository:
                         flattened[key] = str(value)
                 flattened_metadatas.append(flattened)
 
+            # Generate embeddings for documents
+            logger.info(f"Generating embeddings for {len(documents)} documents")
+            embeddings = embedding_service.generate_embeddings(documents)
+
+            # Convert numpy arrays to lists for ChromaDB
+            embeddings_list = [embedding.tolist() for embedding in embeddings]
+
             self.collection.add(
-                documents=documents, metadatas=flattened_metadatas, ids=ids
+                documents=documents,
+                metadatas=flattened_metadatas,
+                ids=ids,
+                embeddings=embeddings_list,
             )
 
-            logger.info(f"Added {len(documents)} documents to collection")
+            logger.info(
+                f"Added {len(documents)} documents with embeddings to collection"
+            )
             return ids
         except Exception as e:
             logger.error(f"Error adding documents: {e}")
@@ -152,10 +175,16 @@ class ChromaRepository:
     async def search_documents(
         self, query: str, n_results: int = 5, where: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """Search for similar documents."""
+        """Search for similar documents using embeddings."""
         try:
+            # Generate embedding for the query
+            query_embedding = embedding_service.generate_single_embedding(query)
+            query_embedding_list = query_embedding.tolist()
+
             results = self.collection.query(
-                query_texts=[query], n_results=n_results, where=where
+                query_embeddings=[query_embedding_list],
+                n_results=n_results,
+                where=where,
             )
 
             documents = []
@@ -178,7 +207,7 @@ class ChromaRepository:
                         }
                     )
 
-            logger.info(f"Found {len(documents)} similar documents")
+            logger.info(f"Found {len(documents)} similar documents using embeddings")
             return documents
         except Exception as e:
             logger.error(f"Error searching documents: {e}")

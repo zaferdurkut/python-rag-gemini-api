@@ -110,3 +110,14 @@ class ServiceUnavailableError(RAGBaseException):
             status_code=503,
             details={"service": service, "reason": reason},
         )
+
+
+class EmbeddingError(RAGBaseException):
+    """Raised when embedding operations fail."""
+
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=500,
+            details=details or {},
+        )
